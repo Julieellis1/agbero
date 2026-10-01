@@ -16,3 +16,4 @@ local.properties
 # logs
 npm-debug.log*
 .github/
+server/node_modules/
