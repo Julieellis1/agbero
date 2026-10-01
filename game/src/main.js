@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { S, resetGame, save, fmt, fmtTime, dayName, addMsg, quotaRemaining, DAYS } from './state.js';
 import { World } from './world.js';
 import { ARCHETYPES, pickArchetype, RUNGS, KABIRU_CALLS, DAY_EVENTS } from './content.js';
-import { sfx, unlock, startAmbience, setMuted } from './audio.js';
+import { sfx, unlock, startAmbience, startMusic, setMuted } from './audio.js';
 import { show, hide, updateHUD, floatText, toast, renderPhone, setSubtitle, setTapHint, setCinebars } from './ui.js';
 
 const $ = id => document.getElementById(id);
@@ -227,7 +227,15 @@ function onSceneTap(e) {
     rec.bus.traverse(o => { if (o.isMesh) { o.userData.busRec = rec; meshes.push(o); } });
   }
   const hits = r.intersectObjects(meshes, false);
-  if (hits.length) openEncounter(hits[0].object.userData.busRec);
+  if (hits.length) { openEncounter(hits[0].object.userData.busRec); return; }
+  // forgiving fallback: tap near a halted bus on screen counts (small phone screens, fat fingers)
+  for (const rec of world.buses) {
+    if (rec.state !== 'halted') continue;
+    const p = rec.bus.position.clone(); p.y += 1.2; p.project(world.camera);
+    if (p.z > 1) continue; // behind camera
+    const sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight;
+    if (Math.hypot(e.clientX - sx, e.clientY - sy) < 120) { openEncounter(rec); return; }
+  }
 }
 
 // ---------- ENCOUNTER ----------
@@ -638,7 +646,7 @@ $('btn-mute').onclick = () => {
 
 // ---------- TITLE ----------
 $('btn-start').onclick = () => {
-  unlock(); startAmbience(); sfx.tap();
+  unlock(); startAmbience(); startMusic(); sfx.tap();
   startOpening();
 };
 $('btn-how').onclick = () => { $('how-panel').classList.toggle('hidden'); sfx.tap(); };
@@ -665,7 +673,7 @@ $('btn-sleep').onclick = () => {
 let last = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000); // tolerate slow phones: 10fps still runs real-time
   last = now;
   if (paused) return;
 
@@ -720,6 +728,17 @@ function loop(now) {
       endDay();
     }
     updateHUD();
+    // pulsing TAP! marker over the first halted danfo
+    const halted = world.buses.find(r => r.state === 'halted');
+    const tapEl = $('tap-bus');
+    if (halted && !encounterOpen && !paused) {
+      const p = halted.bus.position.clone(); p.y += 2.9; p.project(world.camera);
+      if (p.z < 1) {
+        tapEl.style.left = ((p.x * 0.5 + 0.5) * innerWidth) + 'px';
+        tapEl.style.top = ((-p.y * 0.5 + 0.5) * innerHeight) + 'px';
+        tapEl.classList.remove('hidden');
+      } else tapEl.classList.add('hidden');
+    } else tapEl.classList.add('hidden');
   }
 
   // camera push easing
@@ -730,7 +749,7 @@ function loop(now) {
 }
 
 // debug hook (used by automated visual tests)
-window.__dbg = { S, endDay, fridayScreen, gameOver, startDay, save, resetGame,
+window.__dbg = { S, world, endDay, fridayScreen, gameOver, startDay, save, resetGame,
   testBrawl() {
     const rec = activeBus || world.spawnDanfo(() => {});
     const arch = rec.arch || pickArchetype();

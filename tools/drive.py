@@ -80,6 +80,12 @@ try:
             time.sleep(0.1)
             ws.call('Input.dispatchMouseEvent', {'type': 'mouseReleased', 'x': x, 'y': y, 'button': 'left', 'clickCount': 1})
             time.sleep(st.get('after', 1))
+        elif st['op'] == 'touch':
+            x, y = st['x'], st['y']
+            ws.call('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y, 'id': 1}]})
+            time.sleep(0.12)
+            ws.call('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+            time.sleep(st.get('after', 1))
         elif st['op'] == 'shot':
             out = os.path.expanduser(st['out'])
             os.makedirs(os.path.dirname(out), exist_ok=True)

@@ -90,7 +90,15 @@
 
 **Vertical slice v1 (build this first):** one bus stop, one in-game week (Mon–Sun), the full opening sequence, 4 driver archetypes, 7-rung escalation, quota/heat/health/fear/respect, Kabiru + Mama Put + Oga Sule, hospital/agbo, Friday submission with both outcomes, day-end screens, Nokia phone. Win state: survive the week and make quota. Lose states: missed quota twice (cast out), HP zero with no cash for hospital (debt spiral → cast out).
 
-**Later:** territories (small stop → Oshodi → Mile 2 → CMS), rival crews, police raids as playable sequences, recruitment (you collect from juniors), rank progression, 4 endings (chairman / prison / hospital debt / escape the life), more driver archetypes, radio stations, leaderboard ("most feared tout of Lagos").
+**Later:** territories (see Territory progression below), rival crews, police raids as playable sequences, recruitment (you collect from juniors), rank progression, 4 endings (chairman / prison / hospital debt / escape the life), more driver archetypes, radio stations, leaderboard ("most feared tout of Lagos").
+
+## Territory progression (approved 2026-10-01)
+The union posts proven earners to richer stops. Each stop has its own per-bus rate, weekly quota, driver boldness, and heat curve.
+- **Stop 1 — mainland (current):** ₦300/bus, ₦30,000/week quota.
+- **Stop 2 — Island:** ₦1,000/bus, ~₦90,000–100,000/week quota, bolder drivers, faster heat.
+- **Later stops:** Oshodi → Mile 2 → CMS, each richer and more dangerous.
+- **Unlock rule:** clear the weekly quota 4 weeks in a row (one successful month). A week counts as cleared if the quota is met by Friday submission or the Sunday last-chance deadline. After the 4th cleared week, Oga Sule posts the player to the next stop instead of the normal week-survived flow.
+- This is the game's medium-term goal spine: every week's quota feeds the month-long chase for the next posting.
 
 ## Done criteria (v1)
 
