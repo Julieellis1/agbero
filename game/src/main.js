@@ -300,7 +300,7 @@ const AGBERO_LINES = [
 ];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 function waveBus(rec) {
-  if (S.screen !== 'day' || encounterOpen || paused || foodOpen()) return;
+  if (S.screen !== 'day' || busy()) return;
   if (world.buses.some(r => r.state === 'arriving' || r.state === 'halted')) {
     toast('⏳ Finish with this bus first!', 1800); return;
   }
@@ -437,8 +437,16 @@ function openLastmaEncounter(rec) {
 // ---------- MAMA PUT FOOD ----------
 function foodOpen() { return !$('food-pop').classList.contains('hidden'); }
 
+function modalOpen(id) { const el = $(id); return !!el && !el.classList.contains('hidden'); }
+// any live interaction freezes the world + game clock: extorting a bus, brawl,
+// phone (messages/calls), Mama Put, account modal, or manual pause.
+// The render keeps running and the active interaction keeps its own timing.
+function busy() {
+  return paused || encounterOpen || foodOpen() || modalOpen('phone') || modalOpen('brawl') || modalOpen('acct');
+}
+
 function openFood() {
-  if (S.screen !== 'day' || encounterOpen || paused) return;
+  if (S.screen !== 'day' || busy()) return;
   $('food-hunger').textContent = 'Hunger: ' + Math.round(S.hunger) + '/100';
   $('btn-food-full').style.opacity = S.cash >= 300 ? 1 : 0.4;
   $('btn-food-snack').style.opacity = S.cash >= 150 ? 1 : 0.4;
@@ -1192,6 +1200,11 @@ function loop(now) {
   last = now;
   if (paused) return;
 
+  // any live interaction freezes the world + game clock (the render keeps going,
+  // and the active interaction itself — brawl needle, call dialogue — keeps its timing)
+  const frozen = busy();
+  const gdt = frozen ? 0 : dt;
+
   // opening dawn animation
   if (S.screen === 'opening' && opening && opening.dawnAnim !== undefined && opening.dawnAnim < 1) {
     opening.dawnAnim = Math.min(1, opening.dawnAnim + dt * 0.25);
@@ -1221,21 +1234,26 @@ function loop(now) {
     }
   }
 
-  // day progression
-  if (S.screen === 'day' && !encounterOpen && world.mode === 'stop') {
+  // day progression — frozen solid while any interaction is open
+  if (S.screen === 'day' && !frozen && world.mode === 'stop') {
     S.timeMin += dt * 2; // 2 game-min per real second
     world.daySky(S.timeMin);
     if (!kabiruEventDone && S.timeMin >= 720 && S.day < 7 && Math.random() < 0.004) kabiruEvent();
+    // halted bus drives off if ignored — game-time, so it waits out phone/food/etc.
+    for (const rec of world.buses) {
+      if (rec.state === 'halted' && !encounterOpen && rec.leaveIn > 0) {
+        rec.leaveIn -= dt;
+        if (rec.leaveIn <= 0) world.danfoLeave(rec);
+      }
+    }
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnTimer = spawnInterval() * (0.7 + Math.random() * 0.6);
       const passing = world.buses.filter(r => r.state === 'passing').length;
       if (passing < 3) {
         world.spawnDanfo(rec => {
-          // bus halted after wave-down — auto leave after 14s if ignored
-          setTimeout(() => {
-            if (rec.state === 'halted' && !encounterOpen) world.danfoLeave(rec);
-          }, 14000);
+          // bus halted after wave-down — auto leave after 14s of game time if ignored
+          rec.leaveIn = 14;
         });
         if (Math.random() < 0.6) sfx.engine();
       }
@@ -1288,10 +1306,10 @@ function loop(now) {
     } else mamaEl.classList.add('hidden');
   }
 
-  // camera push easing
+  // camera push easing — cosmetic, keeps sweeping on real time
   world.camPush += (camPushTarget - world.camPush) * Math.min(1, dt * 3);
-  updateBrawl(dt);
-  world.update(dt);
+  updateBrawl(dt); // the brawl IS the interaction — it keeps its own timing
+  world.update(gdt); // frozen: buses, traffic, walkers, rain all hold still
   // the agbero is always on screen: pacing, hailing, collecting
   if (S.screen === 'day' && world.agb) {
     world.updateAgbero(dt, {
