@@ -38,7 +38,9 @@ export function resetGame() {
 }
 
 export function save() {
+  S.savedAt = Date.now();
   try { localStorage.setItem('agbero-save-v1', JSON.stringify(S)); } catch (e) {}
+  try { window.dispatchEvent(new Event('agbero-save')); } catch (e) {}
 }
 
 export function load() {

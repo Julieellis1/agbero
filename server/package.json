@@ -1,0 +1,1 @@
+{"dependencies":{"bcryptjs":"^2.4.3","express":"^4.19.2","jsonwebtoken":"^9.0.2","pg":"^8.11.3"},"description":"Agbero game server: static build + auth + cloud saves (Postgres)","devDependencies":{"pg-mem":"^2.9.1"},"main":"index.js","name":"agbero-server","private":true,"scripts":{"start":"node index.js","test":"node test.js"},"version":"1.0.0"}

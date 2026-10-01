@@ -126,6 +126,123 @@ export class World {
     return grp;
   }
 
+  // ---------- the agbero: the main character, visible throughout ----------
+  // white shirt, green face cap, green trousers. Limbs pivot at shoulder/hip
+  // so he can walk, wave down danfos, and gist.
+  makeAgbero() {
+    const s = 1.12;
+    const grp = new THREE.Group();
+    const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 1 });
+    const skinM = M(0x6b4a2f), shirtM = M(0xf5f5f5), pantsM = M(0x1a7a4a), capM = M(0x1a7a4a);
+    const legH = 0.58 * s;
+    const legG = new THREE.CylinderGeometry(0.085 * s, 0.1 * s, legH, 6);
+    const mkLeg = x => {
+      const pivot = new THREE.Group(); pivot.position.set(x, legH, 0);
+      const leg = new THREE.Mesh(legG, pantsM); leg.position.y = -legH / 2; leg.castShadow = true;
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.13 * s, 0.09 * s, 0.26 * s), M(0x1c1a18));
+      shoe.position.set(0, -legH + 0.045 * s, 0.06 * s); shoe.castShadow = true;
+      pivot.add(leg, shoe); grp.add(pivot); return pivot;
+    };
+    const legL = mkLeg(-0.11 * s), legR = mkLeg(0.11 * s);
+    const torsoH = 0.62 * s;
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.19 * s, torsoH * 0.7, 4, 8), shirtM);
+    torso.position.y = legH + torsoH / 2; torso.castShadow = true; grp.add(torso);
+    const armLen = 0.48 * s;
+    const armG = new THREE.CylinderGeometry(0.055 * s, 0.065 * s, armLen, 6);
+    const mkArm = x => {
+      const pivot = new THREE.Group(); pivot.position.set(x, legH + torsoH * 0.8, 0);
+      const arm = new THREE.Mesh(armG, shirtM); arm.position.y = -armLen / 2; arm.castShadow = true;
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.06 * s, 8, 6), skinM);
+      hand.position.y = -armLen - 0.04 * s;
+      pivot.add(arm, hand); grp.add(pivot); return pivot;
+    };
+    const armL = mkArm(-0.28 * s), armR = mkArm(0.28 * s);
+    const headY = legH + torsoH + 0.2 * s;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.155 * s, 12, 10), skinM);
+    head.position.y = headY; head.castShadow = true; grp.add(head);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.165 * s, 0.175 * s, 0.11 * s, 10), capM);
+    crown.position.y = headY + 0.12 * s; crown.castShadow = true;
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2 * s, 0.035 * s, 0.24 * s), capM);
+    brim.position.set(0, headY + 0.085 * s, 0.22 * s); brim.castShadow = true;
+    grp.add(crown, brim);
+    grp.position.set(-1.5, 0, 9);
+    grp.rotation.y = Math.PI / 2; // face the road
+    this.scene.add(grp);
+    this.agb = { grp, legL, legR, armL, armR, head, mode: 'idle', tx: -1.5, tz: 9, waitT: 1, walkPhase: 0, moving: false };
+  }
+
+  // behaviour: pace around the stop, jog to the curb and wave when a bus is
+  // hailed, walk up to the halted bus while the encounter runs
+  updateAgbero(dt, info = {}) {
+    const a = this.agb; if (!a) return;
+    const g = a.grp, t = this.t, k = Math.min(1, dt * 10);
+    let want = 'idle', tx = a.tx, tz = a.tz, speed = 2.2;
+    if (info.halted && info.encounterOpen) { want = 'atBus'; tx = -4.4; tz = 9; speed = 3.6; }
+    else if (info.arriving) { want = 'hail'; tx = -1.4; tz = 9; speed = 5.2; }
+    if (want !== a.mode) { a.mode = want; a.waitT = 0; }
+    if (a.mode === 'idle') {
+      if (a.waitT > 0) a.waitT -= dt;
+      else {
+        const dx0 = a.tx - g.position.x, dz0 = a.tz - g.position.z;
+        if (Math.hypot(dx0, dz0) < 0.4) {
+          a.tx = -2.6 + Math.random() * 2.4; // pace the road edge by the crossing
+          a.tz = 6 + Math.random() * 6;
+          a.waitT = 0.8 + Math.random() * 2.4;
+        }
+      }
+      tx = a.tx; tz = a.tz;
+    }
+    // move toward target
+    const dx = tx - g.position.x, dz = tz - g.position.z;
+    const dist = Math.hypot(dx, dz);
+    a.moving = dist > 0.3;
+    let faceYaw = null;
+    if (a.moving) {
+      const step = Math.min(dist, speed * dt);
+      g.position.x += dx / dist * step;
+      g.position.z += dz / dist * step;
+      faceYaw = Math.atan2(dx, dz);
+      a.walkPhase += dt * speed * 3.4;
+    } else if (a.mode === 'hail' || a.mode === 'atBus') {
+      faceYaw = -Math.PI / 2; // face the bus / road
+    }
+    if (faceYaw !== null) {
+      let d = faceYaw - g.rotation.y;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      g.rotation.y += d * Math.min(1, dt * 10);
+    }
+    // walk cycle
+    const swing = a.moving ? Math.sin(a.walkPhase) * 0.55 : 0;
+    a.legL.rotation.x += (swing - a.legL.rotation.x) * k;
+    a.legR.rotation.x += (-swing - a.legR.rotation.x) * k;
+    g.position.y = a.moving ? Math.abs(Math.sin(a.walkPhase)) * 0.05 : Math.sin(t * 2) * 0.015;
+    // arms per mode
+    if (a.mode === 'hail' && !a.moving) {
+      // big wave toward the oncoming bus: arm up-forward, waving side to side
+      const pump = Math.sin(t * 10);
+      a.armR.rotation.x += ((-2.3 + pump * 0.12) - a.armR.rotation.x) * k;
+      a.armR.rotation.z += ((pump * 0.55) - a.armR.rotation.z) * k;
+      a.armL.rotation.z += (0.55 - a.armL.rotation.z) * k;
+      a.armL.rotation.x += (0 - a.armL.rotation.x) * k;
+      g.position.y = Math.abs(pump) * 0.04; // bounce on his toes
+    } else if (a.mode === 'atBus' && !a.moving) {
+      const g1 = 0.85 + Math.sin(t * 3) * 0.18; // talking with his hands
+      a.armR.rotation.z += (g1 - a.armR.rotation.z) * k;
+      a.armL.rotation.z += (-g1 - a.armL.rotation.z) * k;
+      a.armR.rotation.x += (-0.3 - a.armR.rotation.x) * k;
+      a.armL.rotation.x += (-0.3 - a.armL.rotation.x) * k;
+      a.head.rotation.y = Math.sin(t * 1.7) * 0.3;
+    } else {
+      const asw = a.moving ? Math.sin(a.walkPhase) * 0.32 : Math.sin(t * 2) * 0.05;
+      a.armL.rotation.x += (asw - a.armL.rotation.x) * k;
+      a.armR.rotation.x += (-asw - a.armR.rotation.x) * k;
+      a.armL.rotation.z += (-0.15 - a.armL.rotation.z) * k;
+      a.armR.rotation.z += (0.15 - a.armR.rotation.z) * k;
+      a.head.rotation.y *= 0.9;
+    }
+  }
+
   // ---------- danfo ----------
   // painted side art — every Lagos danfo shouts its hustle
   sideArt(slogan) {
@@ -511,9 +628,10 @@ export class World {
     this.camBase.set(1.5, 5.2, 13.5);
     this.camLook.set(-1, 1.2, -1);
     this.layoutCam();
-    this.stopZ = 4; // where danfos halt
+    this.stopZ = 9; // the zebra crossing — waved danfos pull up here
     this.spawnTraffic();
     this.spawnWalkers();
+    this.makeAgbero(); // the main character, visible throughout
   }
 
   // ---------- ambient traffic: the road is never dead ----------
@@ -693,10 +811,10 @@ export class World {
     return rec;
   }
 
-  // player waves a passing bus down -> it pulls into the stop
+  // player waves a passing bus down -> it cruises in and brakes at the zebra crossing
   waveDown(rec) {
     if (rec.state !== 'passing') return false;
-    rec.state = 'arriving'; rec.speed = 9;
+    rec.state = 'arriving'; rec.cruiseSpeed = rec.speed;
     return true;
   }
 
@@ -762,7 +880,7 @@ export class World {
   spawnLastma(onArrive) {
     const van = this.makeLastmaVan();
     van.position.set(-6, 0, -55);
-    const rec = { bus: van, state: 'arriving', speed: 11, onArrive, isLastma: true };
+    const rec = { bus: van, state: 'arriving', speed: 11, cruiseSpeed: 11, onArrive, isLastma: true };
     this.buses.push(rec);
     this.lastmaRec = rec;
     return rec;
@@ -790,10 +908,12 @@ export class World {
         b.userData.lamp.material.color.setHex(Math.floor(this.t * 6) % 2 ? 0xff2222 : 0x2244ff);
       }
       if (rec.state === 'arriving') {
+        const dist = this.stopZ - b.position.z;
+        // cruise at normal road speed, brake hard only in the last stretch
+        rec.speed = dist > 7 ? (rec.cruiseSpeed || 9) : Math.max(1.8, dist * 1.4);
         b.position.z += rec.speed * dt;
-        rec.speed = Math.max(2.2, rec.speed - dt * 6);
         for (const w of b.userData.wheels) w.rotation.x += dt * rec.speed * 2;
-        if (b.position.z >= this.stopZ) {
+        if (dist <= 0.7) {
           b.position.z = this.stopZ; rec.state = 'halted';
           this.shake(0.15);
           if (rec.onArrive) rec.onArrive(rec);

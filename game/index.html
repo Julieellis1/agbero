@@ -33,6 +33,8 @@
     <div class="title-bar"></div>
     <div class="title-sub">Lagos bus-stop simulator</div>
     <button id="btn-start" class="big-btn">START HUSTLE</button>
+    <button id="btn-continue" class="big-btn hidden" style="background:#1a7a4a">▶ <span id="continue-label">CONTINUE</span></button>
+    <button id="btn-acct-title" class="ghost-btn">👤 SIGN IN / SAVE PROGRESS</button>
     <button id="btn-how" class="ghost-btn">HOW TO PLAY</button>
     <div id="how-panel" class="hidden">
       <p>🚐 Tap a danfo to engage the driver.</p>
@@ -54,6 +56,7 @@
       <div class="chip" id="chip-hp">❤️ 100</div>
       <div class="chip" id="chip-hunger">🍲 20</div>
       <button class="chip btn" id="btn-phone">📱</button>
+      <button class="chip btn" id="btn-acct" title="Account">👤</button>
       <button class="chip btn" id="btn-pause">⏸</button>
     </div>
     <div id="hud-day">MONDAY · DAY 1/7</div>
@@ -129,6 +132,29 @@
       <div id="phone-msgs"></div>
       <div id="phone-call" class="hidden"></div>
       <button id="btn-phone-close" class="big-btn small">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- Account: sign in for cloud saves -->
+  <div id="acct" class="hidden">
+    <div id="acct-screen">
+      <div id="acct-head"><span>👤 AGBERO ACCOUNT</span><button id="acct-close" class="ghost-btn small">✕</button></div>
+      <div id="acct-offline" class="hidden">☁️ Accounts live on the Dokploy server. Here you are playing as a <b>guest</b> — progress saves on this device only.</div>
+      <div id="acct-form">
+        <div id="acct-tabs">
+          <button id="tab-login" class="phone-tab active">SIGN IN</button>
+          <button id="tab-register" class="phone-tab">CREATE ACCOUNT</button>
+        </div>
+        <input id="acct-email" type="email" placeholder="Email" autocomplete="email">
+        <input id="acct-pass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+        <div id="acct-err"></div>
+        <button id="acct-go" class="big-btn">SIGN IN</button>
+        <div id="acct-note">One account, any device. Your hustle auto-saves to the cloud.</div>
+      </div>
+      <div id="acct-out" class="hidden">
+        <p>Signed in as <b id="acct-who"></b>.<br>Your hustle auto-saves to the cloud ☁️</p>
+        <button id="acct-signout" class="ghost-btn">Sign out</button>
+      </div>
     </div>
   </div>
 

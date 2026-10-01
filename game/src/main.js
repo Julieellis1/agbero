@@ -276,10 +276,29 @@ function onSceneTap(e) {
     const sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight;
     if (mhits.length || (p.z < 1 && Math.hypot(e.clientX - sx, e.clientY - sy) < 90)) { openFood(); return; }
   }
+  // tap the agbero himself -> he gists
+  if (world.agb) {
+    const p = world.agb.grp.position.clone(); p.y += 1.1; p.project(world.camera);
+    if (p.z < 1) {
+      const sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight;
+      if (Math.hypot(e.clientX - sx, e.clientY - sy) < 80) {
+        toast(pick(AGBERO_LINES), 2400); sfx.tap(); return;
+      }
+    }
+  }
 }
 
 // ---------- FLAG-DOWN ----------
 // wave zone: approaching buses the player can pull into the stop
+const AGBERO_LINES = [
+  'Na me be king for this bus stop!',
+  'Wave danfo, make I see something.',
+  'Oga Sule no dey joke with quota o.',
+  'This Lagos sun no be here o.',
+  'Conductor, bring my money come!',
+  'No long talk — pay your levy!',
+];
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 function waveBus(rec) {
   if (S.screen !== 'day' || encounterOpen || paused || foodOpen()) return;
   if (world.buses.some(r => r.state === 'arriving' || r.state === 'halted')) {
@@ -856,6 +875,187 @@ $('btn-phone-close').onclick = () => { hide('phone'); sfx.tap(); };
 $('tab-msgs').onclick = () => { showPhoneTab('msgs'); sfx.tap(); };
 $('tab-call').onclick = () => { showPhoneTab('call'); renderCall(); sfx.tap(); };
 
+// ---------- ACCOUNTS + CLOUD SAVE ----------
+// Same-origin API when hosted on Dokploy; falls back to guest mode elsewhere
+// (GitHub Pages demo, APK) where /api/health is unreachable.
+const API = {
+  token: localStorage.getItem('agbero_token') || null,
+  email: localStorage.getItem('agbero_email') || null,
+  available: false,
+  user: null,
+  async check() {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 4000);
+      const r = await fetch('/api/health', { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(t);
+      this.available = r.ok && (await r.json()).db === true;
+    } catch { this.available = false; }
+  },
+  headers() {
+    return { 'content-type': 'application/json', ...(this.token ? { authorization: 'Bearer ' + this.token } : {}) };
+  },
+  async call(method, path, body) {
+    const r = await fetch('/api' + path, {
+      method, headers: this.headers(), body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  },
+};
+
+let acctMode = 'login';
+let pendingSave = null; // { state, source } — newest save offered as CONTINUE
+
+function updateAcctChip() {
+  const b = $('btn-acct');
+  if (b) {
+    b.style.borderColor = API.user ? '#2fbf71' : '';
+    b.title = API.user ? 'Signed in: ' + API.user.email : 'Account';
+  }
+}
+
+function setAcctMode(m) {
+  acctMode = m;
+  $('tab-login').classList.toggle('active', m === 'login');
+  $('tab-register').classList.toggle('active', m === 'register');
+  $('acct-go').textContent = m === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT';
+  $('acct-err').textContent = '';
+}
+
+function openAcct() {
+  sfx.tap();
+  $('acct-err').textContent = '';
+  if (!API.available) {
+    $('acct-offline').classList.remove('hidden');
+    $('acct-form').classList.add('hidden');
+  } else {
+    $('acct-offline').classList.add('hidden');
+    $('acct-form').classList.toggle('hidden', !!API.user);
+  }
+  $('acct-out').classList.toggle('hidden', !API.user);
+  if (API.user) $('acct-who').textContent = API.user.email;
+  show('acct');
+}
+
+function applySaveState(saved) {
+  if (!saved || !Object.keys(saved).length) return false;
+  const keep = { ...saved };
+  delete keep.screen;
+  // startDay resets the daily counters — stash and restore them after
+  const daily = {
+    dailyCollected: keep.dailyCollected || 0,
+    encountersToday: keep.encountersToday || 0,
+    timeMin: keep.timeMin || 360,
+    hunger: keep.hunger != null ? keep.hunger : 20,
+  };
+  if (keep.dailyTarget) daily.dailyTarget = keep.dailyTarget;
+  Object.assign(S, keep);
+  return daily;
+}
+
+function continueFromSave() {
+  if (!pendingSave) return;
+  unlock(); startAmbience(); startMusic(); sfx.tap();
+  const daily = applySaveState(pendingSave.state);
+  pendingSave = null;
+  hide('btn-continue');
+  startDay(S.day || 1);
+  if (daily) Object.assign(S, daily);
+  updateHUD(); save();
+  toast('Save loaded. Back to the hustle.', 2400);
+}
+
+function offerContinue(state, source) {
+  if (!state || !(state.day > 1 || state.cash > 0 || state.week > 1)) return;
+  pendingSave = { state, source };
+  $('continue-label').textContent = `CONTINUE — DAY ${state.day} (${source === 'cloud' ? '☁️ cloud' : '📱 this device'})`;
+  show('btn-continue');
+}
+
+async function initAccount() {
+  updateAcctChip();
+  await API.check();
+  // newest save wins: local vs cloud
+  let best = null;
+  try {
+    const raw = localStorage.getItem('agbero-save-v1');
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && d.savedAt) best = { state: d, at: d.savedAt, source: 'local' };
+    }
+  } catch {}
+  if (API.available && API.token) {
+    try {
+      const data = await API.call('GET', '/state');
+      API.user = { email: API.email };
+      const at = new Date(data.updated_at).getTime() || 0;
+      if (data.state && Object.keys(data.state).length && (!best || at > best.at))
+        best = { state: data.state, at, source: 'cloud' };
+    } catch {
+      API.token = null; API.email = null; API.user = null;
+      localStorage.removeItem('agbero_token'); localStorage.removeItem('agbero_email');
+    }
+  }
+  updateAcctChip();
+  if (best) {
+    const { screen, ...rest } = best.state;
+    Object.assign(S, rest); // S holds the newest progress either way
+    offerContinue(best.state, best.source);
+  }
+}
+
+// throttled cloud push, fired on every local save via the agbero-save event
+let lastCloudPush = 0, cloudPushTimer = null;
+function saveCloud() {
+  if (!API.user || !API.available) return;
+  const now = Date.now();
+  if (now - lastCloudPush < 20000) {
+    if (!cloudPushTimer)
+      cloudPushTimer = setTimeout(() => { cloudPushTimer = null; saveCloud(); }, 20000 - (now - lastCloudPush));
+    return;
+  }
+  lastCloudPush = now;
+  const { screen, ...rest } = S;
+  API.call('PUT', '/state', { state: rest }).catch(() => {});
+}
+window.addEventListener('agbero-save', saveCloud);
+
+$('btn-acct').onclick = e => { e.stopPropagation(); openAcct(); };
+$('btn-acct-title').onclick = () => openAcct();
+$('acct-close').onclick = () => { hide('acct'); sfx.tap(); };
+$('tab-login').onclick = () => { setAcctMode('login'); sfx.tap(); };
+$('tab-register').onclick = () => { setAcctMode('register'); sfx.tap(); };
+$('btn-continue').onclick = continueFromSave;
+$('acct-signout').onclick = () => {
+  API.token = null; API.email = null; API.user = null;
+  localStorage.removeItem('agbero_token'); localStorage.removeItem('agbero_email');
+  updateAcctChip(); openAcct(); toast('Signed out. Guest mode.', 2200); sfx.tap();
+};
+$('acct-go').onclick = async () => {
+  const email = $('acct-email').value.trim();
+  const password = $('acct-pass').value;
+  $('acct-err').textContent = '';
+  if (!email || !password) { $('acct-err').textContent = 'Enter email and password.'; return; }
+  $('acct-go').disabled = true;
+  try {
+    const data = await API.call('POST', '/auth/' + (acctMode === 'login' ? 'login' : 'register'), { email, password });
+    API.token = data.token; API.email = data.email; API.user = { email: data.email };
+    localStorage.setItem('agbero_token', data.token);
+    localStorage.setItem('agbero_email', data.email);
+    updateAcctChip();
+    hide('acct');
+    toast(acctMode === 'login' ? 'Welcome back, hustler!' : 'Account created. Hustle saved! ☁️', 2600);
+    if (data.state && Object.keys(data.state).length && S.screen === 'title')
+      offerContinue(data.state, 'cloud');
+    saveCloud();
+  } catch (e) {
+    $('acct-err').textContent = e.message;
+  }
+  $('acct-go').disabled = false;
+};
+
 // ---------- PHONE: CALL COLLEAGUES ----------
 const CONTACTS = [
   { name: 'Emeka', stop: 'Oshodi', booming: true, sub: 'Oshodi Under Bridge' },
@@ -1092,6 +1292,14 @@ function loop(now) {
   world.camPush += (camPushTarget - world.camPush) * Math.min(1, dt * 3);
   updateBrawl(dt);
   world.update(dt);
+  // the agbero is always on screen: pacing, hailing, collecting
+  if (S.screen === 'day' && world.agb) {
+    world.updateAgbero(dt, {
+      arriving: world.buses.some(r => r.state === 'arriving'),
+      halted: world.buses.some(r => r.state === 'halted'),
+      encounterOpen,
+    });
+  }
   world.render();
 }
 
@@ -1105,6 +1313,9 @@ window.__dbg = { S, world, endDay, fridayScreen, gameOver, startDay, save, reset
   },
   strike: () => brawlStrike(),
 };
+
+// accounts: silent sign-in + newest-save detection (local vs cloud)
+initAccount();
 
 // debug shortcuts
 if (params.get('s') === 'opening') {
@@ -1131,5 +1342,5 @@ requestAnimationFrame(loop);
 
 // dev hook for automated testing (?dev=1)
 if (params.get('dev') === '1') {
-  window.__agbero = { S, world, lastmaRaid, openFood, waveBus, sfx };
+  window.__agbero = { S, world, lastmaRaid, openFood, waveBus, sfx, save, API };
 }
