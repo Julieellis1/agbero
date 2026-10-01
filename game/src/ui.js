@@ -17,6 +17,11 @@ export function updateHUD() {
   $('hud-day').textContent = dayName() + ' · DAY ' + S.day + '/7';
   $('chip-heat').style.color = S.heat >= 70 ? '#e63946' : '';
   $('chip-hp').style.color = S.health < 35 ? '#e63946' : '';
+  // day progress meter: 6:00 (360) → 20:00 (1200)
+  const dp = Math.min(1, Math.max(0, (S.timeMin - 360) / 840));
+  $('daybar-fill').style.width = (dp * 100) + '%';
+  $('daybar-sun').style.left = (dp * 100) + '%';
+  $('daybar-sun').textContent = S.timeMin >= 1080 ? '🌙' : '☀️';
 }
 
 export function floatText(text, color = '#ffc61a', xPct = 50, yPct = 40) {

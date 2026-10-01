@@ -46,8 +46,11 @@ export class World {
 
   clear() {
     this.scene.clear();
-    this.buses = []; this.people = []; this.traffic = [];
+    this.buses = []; this.people = []; this.traffic = []; this.walkers = [];
     this.scene.fog = null; this.fire = null;
+    this.lampMats = []; this.headMats = [];
+    this.skyCanvas = null; this.skyCtx = null; this.skyTex = null; this.skyMesh = null;
+    this.sunDisc = null; this.rain = null; this.rainOn = false;
   }
 
   lights(sunColor, sunInt, hemiInt) {
@@ -124,6 +127,25 @@ export class World {
   }
 
   // ---------- danfo ----------
+  // painted side art — every Lagos danfo shouts its hustle
+  sideArt(slogan) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 160;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f5b800'; g.fillRect(0, 0, 512, 160);
+    g.fillStyle = '#141414'; g.fillRect(0, 0, 512, 14); g.fillRect(0, 146, 512, 14);
+    g.fillStyle = '#141414'; g.font = 'bold 44px Anton, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    // shrink to fit
+    let size = 44;
+    while (g.measureText(slogan).width > 470 && size > 20) { size -= 4; g.font = `bold ${size}px Anton, sans-serif`; }
+    g.fillText(slogan, 256, 68);
+    g.font = 'bold 26px Anton, sans-serif'; g.fillStyle = '#0a5a30';
+    g.fillText('★ LAGOS ★', 256, 118);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
   makeDanfo(stripeColor = 0x141414) {
     const bus = new THREE.Group();
     const bodyM = new THREE.MeshStandardMaterial({ color: YELLOW, roughness: 0.7 });
@@ -134,6 +156,13 @@ export class World {
       new THREE.MeshStandardMaterial({ color: stripeColor, roughness: 0.7 })
     );
     stripe.position.y = 1.05;
+    // side art with a random hustle slogan
+    const slogans = ['NO CONDITION IS PERMANENT', 'EKO ONI BAJE', 'GOD DEY', 'ONE WAY',
+      'JAH BLESS', 'SHINE YOUR EYE', 'OBO NI', 'ALHAMDULILLAH', 'NO GREE FOR ANYBODY', 'HUSTLE O'];
+    const art = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.6),
+      new THREE.MeshStandardMaterial({ map: this.sideArt(slogans[Math.floor(Math.random() * slogans.length)]), roughness: 0.7 }));
+    art.position.set(1.02, 0.62, -0.4); bus.add(art);
+    const art2 = art.clone(); art2.position.x = -1.02; art2.rotation.y = Math.PI; bus.add(art2);
     const winM = new THREE.MeshStandardMaterial({ color: 0x1c2733, roughness: 0.3, metalness: 0.4 });
     const winF = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 0.06), winM);
     winF.position.set(0, 1.62, 2.31);
@@ -159,7 +188,8 @@ export class World {
       wheels.push(w); bus.add(w);
     }
     // headlights
-    const hlM = new THREE.MeshStandardMaterial({ color: 0xfff6c9, emissive: 0x554411 });
+    const hlM = new THREE.MeshStandardMaterial({ color: 0xfff6c9, emissive: 0xffdf7a, emissiveIntensity: 0.33 });
+    (this.headMats = this.headMats || []).push(hlM);
     for (const x of [-0.6, 0.6]) {
       const hl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), hlM);
       hl.position.set(x, 1.0, 2.32); bus.add(hl);
@@ -178,6 +208,35 @@ export class World {
     this.scene.fog = new THREE.Fog(0x0a0e1a, 20, 90);
     this.lights(0x8fa8ff, 0.25, 0.35);
     this.ground(0x1c1a17);
+    // stars + moon: the night you sleep under the bridge
+    {
+      const N = 220, pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const a = Math.random() * Math.PI * 2, e = 0.15 + Math.random() * 1.3, r = 250;
+        pos[i * 3] = Math.cos(a) * Math.cos(e) * r;
+        pos[i * 3 + 1] = Math.sin(e) * r;
+        pos[i * 3 + 2] = Math.sin(a) * Math.cos(e) * r;
+      }
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xcdd8ff, size: 1.6, sizeAttenuation: false, fog: false })));
+      const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xe8eeff, fog: false }));
+      moon.position.set(-120, 140, -180); this.scene.add(moon);
+    }
+    // distant city glow on the horizon
+    {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+      const g = c.getContext('2d');
+      const gr = g.createLinearGradient(0, 0, 0, 64);
+      gr.addColorStop(0, 'rgba(255,150,60,0)'); gr.addColorStop(1, 'rgba(255,150,60,0.35)');
+      g.fillStyle = gr; g.fillRect(0, 0, 256, 64);
+      for (let i = 0; i < 40; i++) { g.fillStyle = 'rgba(255,200,120,0.5)'; g.fillRect(Math.random() * 256, 30 + Math.random() * 30, 2, 3); }
+      const t = new THREE.CanvasTexture(c);
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(180, 26),
+        new THREE.MeshBasicMaterial({ map: t, transparent: true, fog: false, depthWrite: false }));
+      glow.position.set(0, 10, -120); this.scene.add(glow);
+    }
     // bridge deck overhead
     const deckM = new THREE.MeshStandardMaterial({ color: 0x3d3a35, roughness: 1 });
     const deck = new THREE.Mesh(new THREE.BoxGeometry(60, 1.2, 14), deckM);
@@ -246,9 +305,6 @@ export class World {
   skyDome(top, mid, bot) {
     const c = document.createElement('canvas'); c.width = 4; c.height = 256;
     const g = c.getContext('2d');
-    const gr = g.createLinearGradient(0, 0, 0, 256);
-    gr.addColorStop(0, top); gr.addColorStop(0.62, mid); gr.addColorStop(1, bot);
-    g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     const sky = new THREE.Mesh(
@@ -256,7 +312,59 @@ export class World {
       new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, fog: false })
     );
     this.scene.add(sky);
+    this.skyCanvas = c; this.skyCtx = g; this.skyTex = t; this.skyMesh = sky;
+    this.paintSky(top, mid, bot);
     return sky;
+  }
+
+  paintSky(top, mid, bot) {
+    if (!this.skyCtx) return;
+    const g = this.skyCtx;
+    const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, top); gr.addColorStop(0.62, mid); gr.addColorStop(1, bot);
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+    this.skyTex.needsUpdate = true;
+  }
+
+  // --- day cycle: sky colors + sun position + lamps, driven by in-game minutes ---
+  // keyframes: [minutes, top, mid, bot, sunColor, sunInt, hemiInt, fogColor]
+  daySky(timeMin) {
+    const K = [
+      [360,  '#3a5a9c', '#e8956b', '#f7d9a8', 0xffb36b, 0.9, 0.7,  0xd9b49a],
+      [480,  '#2f6cb8', '#9fc7e8', '#d9ecf7', 0xffe9c4, 1.7, 1.0,  0xbcd7ec],
+      [720,  '#1f5fb0', '#8fc3ea', '#e0f0fa', 0xfff4e0, 2.0, 1.15, 0xc2dcf0],
+      [990,  '#2a63b0', '#a8cdea', '#f0e2b8', 0xffe0a8, 1.8, 1.05, 0xc4d2e2],
+      [1080, '#3a4a8c', '#e08a5a', '#f7c86b', 0xff9a50, 1.1, 0.8,  0xd8a884],
+      [1140, '#1a2048', '#7a4a6a', '#d8705a', 0xff7a40, 0.5, 0.55, 0x8a5a62],
+      [1200, '#060a18', '#101a38', '#2a3050', 0x8fa8ff, 0.25, 0.4, 0x1a2038],
+    ];
+    let a = K[0], b = K[K.length - 1];
+    for (let i = 0; i < K.length - 1; i++) {
+      if (timeMin >= K[i][0] && timeMin <= K[i + 1][0]) { a = K[i]; b = K[i + 1]; break; }
+    }
+    const f = b[0] === a[0] ? 0 : (timeMin - a[0]) / (b[0] - a[0]);
+    const mix = (c1, c2) => '#' + new THREE.Color(c1).lerp(new THREE.Color(c2), f).getHexString();
+    this.paintSky(mix(a[1], b[1]), mix(a[2], b[2]), mix(a[3], b[3]));
+    if (this.scene.fog) this.scene.fog.color.set(mix(a[7], b[7]));
+    if (this.sun) {
+      this.sun.color.set(a[4]).lerp(new THREE.Color(b[4]), f);
+      this.sun.intensity = (a[5] + (b[5] - a[5]) * f) * (this.sun.userData.rainDim || 1);
+      // sun arcs east -> overhead -> west across the working day
+      const dayF = Math.min(1, Math.max(0, (timeMin - 360) / 780));
+      const ang = Math.PI * dayF; // 0=east horizon, PI=west horizon
+      this.sun.position.set(Math.cos(ang) * 40, Math.sin(ang) * 38 + 4, 14);
+      if (this.sunDisc) {
+        this.sunDisc.position.set(Math.cos(ang) * 240, Math.sin(ang) * 220 + 8, -180);
+        const night = timeMin > 1120;
+        this.sunDisc.material.color.set(night ? 0xdfe8ff : 0xffe9a8);
+        this.sunDisc.scale.setScalar(night ? 14 : 20 - dayF * 4);
+      }
+    }
+    if (this.hemi) this.hemi.intensity = a[6] + (b[6] - a[6]) * f;
+    // streetlights + headlights switch on toward dusk
+    const lampOn = timeMin >= 1060;
+    for (const m of (this.lampMats || [])) m.emissiveIntensity = lampOn ? 2.2 : 0.6;
+    for (const m of (this.headMats || [])) m.emissiveIntensity = lampOn ? 1.6 : 0.33;
   }
 
   // building facade with lit/unlit windows
@@ -280,6 +388,11 @@ export class World {
     this.skyDome('#2f6cb8', '#9fc7e8', '#d9ecf7');
     this.scene.fog = new THREE.Fog(0xbcd7ec, 55, 160);
     this.lights(0xffe9c4, 1.7, 1.0);
+    // sun disc riding the day arc
+    this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(9, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
+    this.sunDisc.position.set(240, 10, -180);
+    this.scene.add(this.sunDisc);
     this.ground(0x6b5b43);
     // road
     const road = new THREE.Mesh(new THREE.PlaneGeometry(14, 160),
@@ -313,7 +426,8 @@ export class World {
     walk.position.set(6, 0.1, 0); walk.receiveShadow = true; this.scene.add(walk);
     // streetlights along the road
     const poleM = new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.8 });
-    const lampM = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0x665522, emissiveIntensity: 0.6 });
+    const lampM = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffc86b, emissiveIntensity: 0.6 });
+    this.lampMats = [lampM];
     for (let z = -60; z <= 60; z += 24) {
       for (const x of [-13.5, 1.5]) {
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.5, 8), poleM);
@@ -399,6 +513,7 @@ export class World {
     this.layoutCam();
     this.stopZ = 4; // where danfos halt
     this.spawnTraffic();
+    this.spawnWalkers();
   }
 
   // ---------- ambient traffic: the road is never dead ----------
@@ -482,6 +597,74 @@ export class World {
     return t;
   }
 
+  // ---------- pedestrians ----------
+  spawnWalkers() {
+    this.walkers = [];
+    const shirts = [0xc0392b, 0x2980b9, 0x8e44ad, 0xd35400, 0x16a085, 0xf39c12, 0x7f8c8d, 0xe84393];
+    for (let i = 0; i < 9; i++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const p = this.makePerson({
+        shirt: shirts[i % shirts.length],
+        pants: [0x2b2b3a, 0x3a3a3a, 0x1a3a5a][i % 3],
+        scale: 0.92 + Math.random() * 0.14,
+        cap: Math.random() < 0.4 ? 0xdddddd : null,
+      });
+      const x = side > 0 ? 4.6 + Math.random() * 2.4 : -15.2 + Math.random() * 1.4;
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      p.position.set(x, 0, -75 + Math.random() * 150);
+      if (dir < 0) p.rotation.y = Math.PI;
+      this.scene.add(p);
+      this.walkers.push({ p, dir, speed: 1.1 + Math.random() * 1.1, phase: Math.random() * 6 });
+    }
+  }
+
+  updateWalkers(dt) {
+    if (!this.walkers) return;
+    for (const w of this.walkers) {
+      w.p.position.z += w.dir * w.speed * dt;
+      w.phase += dt * 9;
+      // walking bob + arm swing
+      w.p.position.y = Math.abs(Math.sin(w.phase)) * 0.06;
+      const u = w.p.userData;
+      if (u && u.a1) { u.a1.rotation.x = Math.sin(w.phase) * 0.5; u.a2.rotation.x = -Math.sin(w.phase) * 0.5; }
+      if (w.dir > 0 && w.p.position.z > 78) w.p.position.z = -78;
+      if (w.dir < 0 && w.p.position.z < -78) w.p.position.z = 78;
+    }
+  }
+
+  // ---------- rain ----------
+  setRain(on) {
+    this.rainOn = on;
+    if (on && !this.rain) {
+      const N = 350;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        pos[i * 3] = -20 + Math.random() * 30;
+        pos[i * 3 + 1] = Math.random() * 22;
+        pos[i * 3 + 2] = -40 + Math.random() * 90;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.rain = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0xaaccee, size: 0.12, transparent: true, opacity: 0.6, fog: false,
+      }));
+      this.scene.add(this.rain);
+    }
+    if (this.rain) this.rain.visible = on;
+    // rain gloom: dim the sun while it falls
+    if (this.sun) this.sun.userData.rainDim = on ? 0.55 : 1;
+  }
+
+  updateRain(dt) {
+    if (!this.rain || !this.rain.visible) return;
+    const pos = this.rain.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let y = pos.getY(i) - dt * 16;
+      if (y < 0) { y = 22; pos.setX(i, -20 + Math.random() * 30); pos.setZ(i, -40 + Math.random() * 90); }
+      pos.setY(i, y);
+    }
+    pos.needsUpdate = true;
+  }
   // spawn a danfo driving in; onArrive(bus) when halted at the stop
   spawnDanfo(onArrive) {
     const bus = this.makeDanfo();
@@ -542,6 +725,8 @@ export class World {
     }
     if (this.fire) this.fire.intensity = 10 + Math.sin(this.t * 13) * 3 + Math.random() * 2;
     this.updateTraffic(dt);
+    this.updateWalkers(dt);
+    this.updateRain(dt);
     // camera
     const push = this.camPush;
     const px = this.camBase.x + Math.sin(this.t * 0.3) * 0.25 - push * 3.2;

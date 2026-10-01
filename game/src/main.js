@@ -106,6 +106,14 @@ function startOpening() {
   opening = { beat: 0, begTaps: 0, begTime: 0, begActive: false, ruleIdx: 0, advancing: false };
   hide('beg-meter-wrap');
   runBeat();
+  show('btn-skip-opening');
+  $('btn-skip-opening').onclick = e => {
+    e.stopPropagation(); sfx.tap();
+    hide('btn-skip-opening'); hide('beg-meter-wrap');
+    opening = null; setSubtitle(null); setTapHint(false);
+    $('scene').style.background = ''; $('scene').onclick = null;
+    startDay(1);
+  };
   // tap anywhere advances (except special beats)
   $('scene').onclick = () => advanceOpening();
 }
@@ -189,7 +197,9 @@ function startDay(day) {
   setCinebars(false); setSubtitle(null); setTapHint(false);
   hide('beg-meter-wrap'); $('scene').style.background = '';
   world.buildStop();
-  world.setDawn && null;
+  S.rainy = day > 1 && Math.random() < 0.25;
+  world.setRain(S.rainy);
+  if (S.rainy) setTimeout(() => toast('🌧️ Rain dey fall — drivers dey rush, shine your eye!', 3600), 6000);
   spawnTimer = 4;
   updateHUD(); save();
 
@@ -682,7 +692,7 @@ function loop(now) {
     opening.dawnAnim = Math.min(1, opening.dawnAnim + dt * 0.25);
     world.setDawn(opening.dawnAnim);
     if (opening.dawnAnim >= 1) {
-      setTimeout(() => { opening = null; startDay(1); }, 600);
+      setTimeout(() => { hide('btn-skip-opening'); opening = null; startDay(1); }, 600);
     }
   }
 
@@ -709,6 +719,7 @@ function loop(now) {
   // day progression
   if (S.screen === 'day' && !encounterOpen && world.mode === 'stop') {
     S.timeMin += dt * 2; // 2 game-min per real second
+    world.daySky(S.timeMin);
     if (!kabiruEventDone && S.timeMin >= 720 && S.day < 7 && Math.random() < 0.004) kabiruEvent();
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
