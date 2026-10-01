@@ -1,0 +1,17 @@
+# dependencies
+game/node_modules/
+
+# build output (rebuilt in CI)
+game/dist/
+
+# Capacitor / Android generated
+game/android/app/build/
+game/android/.gradle/
+game/android/capacitor-cordova-android-plugins/build/
+game/android/build/
+*.iml
+local.properties
+.DS_Store
+
+# logs
+npm-debug.log*

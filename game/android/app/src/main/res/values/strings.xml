@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Agbero</string>
+    <string name="title_activity_main">Agbero</string>
+    <string name="package_name">com.teta.agbero</string>
+    <string name="custom_url_scheme">com.teta.agbero</string>
+</resources>

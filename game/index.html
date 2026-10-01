@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#14110f" />
+  <title>AGBERO — Lagos Bus-Stop Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Letterbox bars for cinematic opening -->
+  <div id="bar-top" class="cinebar hidden"></div>
+  <div id="bar-bottom" class="cinebar hidden"></div>
+
+  <!-- Subtitle / narration -->
+  <div id="subtitle" class="hidden"></div>
+  <div id="tap-hint" class="hidden">TAP TO CONTINUE</div>
+  <div id="beg-meter-wrap" class="hidden">
+    <div id="beg-label">BEG! TAP FAST!</div>
+    <div id="beg-meter"><div id="beg-fill"></div></div>
+  </div>
+
+  <!-- Title screen -->
+  <div id="title-screen" class="screen">
+    <div class="title-kicker">LAGOS · 4:47 AM</div>
+    <h1 class="game-title">AGBERO</h1>
+    <div class="title-sub">Lagos bus-stop simulator</div>
+    <button id="btn-start" class="big-btn">START HUSTLE</button>
+    <button id="btn-how" class="ghost-btn">HOW TO PLAY</button>
+    <div id="how-panel" class="hidden">
+      <p>🚐 Tap a danfo to engage the driver.</p>
+      <p>💰 Demand the ₦300 fee. Escalate if he refuses — each step shows its risk.</p>
+      <p>📅 Make <b>₦5,000/day</b>. Every <b>Friday</b> submit <b>₦30,000</b> to Oga Sule.</p>
+      <p>🔥 Violence raises <b>heat</b>. Too much heat brings LASTMA.</p>
+      <p>🏥 Beatings cost hospital money. Back up Kabiru and he'll back you.</p>
+    </div>
+    <div class="title-foot">A Rio × Adebiyi production · v0.1 slice</div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-top">
+      <div class="chip" id="chip-cash">💰 ₦0</div>
+      <div class="chip quota"><div id="quota-label">🎯 ₦0 / ₦5,000</div><div id="quota-bar"><div id="quota-fill"></div></div></div>
+      <div class="chip" id="chip-time">🌅 6:00</div>
+      <div class="chip" id="chip-heat">🔥 0</div>
+      <div class="chip" id="chip-hp">❤️ 100</div>
+      <button class="chip btn" id="btn-phone">📱</button>
+      <button class="chip btn" id="btn-pause">⏸</button>
+    </div>
+    <div id="hud-day">MONDAY · DAY 1/7</div>
+  </div>
+
+  <!-- Encounter card -->
+  <div id="encounter" class="hidden">
+    <div id="enc-card">
+      <div id="enc-head"><span id="enc-emoji">🚌</span><div><div id="enc-name">Danfo Driver</div><div id="enc-trait">Nervous conductor</div></div></div>
+      <div id="enc-dialogue">"..."</div>
+      <div id="enc-rungs"></div>
+      <div id="enc-actions">
+        <button id="btn-mercy" class="ghost-btn small">Show mercy</button>
+        <button id="btn-release" class="ghost-btn small">Let him go</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Brawl mini-game -->
+  <div id="brawl" class="hidden">
+    <div id="brawl-card">
+      <div id="brawl-title">👊 BRAWL!</div>
+      <div class="brawl-hp-row">
+        <div class="brawl-hp"><div class="brawl-hp-label">YOU</div><div class="brawl-hp-track"><div id="brawl-php"></div></div></div>
+        <div id="brawl-timer">15</div>
+        <div class="brawl-hp"><div class="brawl-hp-label">DRIVER</div><div class="brawl-hp-track"><div id="brawl-dhp"></div></div></div>
+      </div>
+      <div id="brawl-msg">Time your strike! Tap STRIKE when the needle is in the green.</div>
+      <div id="brawl-track"><div id="brawl-zone"></div><div id="brawl-needle"></div></div>
+      <button id="btn-strike" class="big-btn">STRIKE! 👊</button>
+    </div>
+  </div>
+
+  <!-- Floating feedback -->
+  <div id="float-layer"></div>
+
+  <!-- Nokia phone -->
+  <div id="phone" class="hidden">
+    <div id="phone-screen">
+      <div id="phone-head">📱 NOKIA · <span id="phone-clock">6:00</span></div>
+      <div id="phone-msgs"></div>
+      <button id="btn-phone-close" class="big-btn small">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- Day end -->
+  <div id="dayend" class="screen hidden">
+    <h2 class="screen-title">DAY <span id="de-day">1</span> DONE</h2>
+    <div id="de-stats"></div>
+    <div class="btn-row">
+      <button id="btn-agbo" class="big-btn small">🌿 AGBO ₦200</button>
+      <button id="btn-hospital" class="big-btn small">🏥 HOSPITAL ₦1,000</button>
+    </div>
+    <div class="btn-row">
+      <button id="btn-bribe" class="big-btn small">💵 BRIBE ₦1,000</button>
+      <button id="btn-sleep" class="big-btn">😴 SLEEP</button>
+    </div>
+  </div>
+
+  <!-- Friday submission -->
+  <div id="friday" class="screen hidden">
+    <h2 class="screen-title">FRIDAY — SUBMISSION</h2>
+    <div id="fri-body"></div>
+    <button id="btn-fri-go" class="big-btn">FACE OGA SULE</button>
+  </div>
+
+  <!-- Game over / week complete -->
+  <div id="endcard" class="screen hidden">
+    <h2 class="screen-title" id="end-title">WAHALA!</h2>
+    <div id="end-body"></div>
+    <button id="btn-again" class="big-btn">TRY AGAIN</button>
+  </div>
+
+  <!-- Pause -->
+  <div id="pausemenu" class="screen hidden">
+    <h2 class="screen-title">PAUSED</h2>
+    <button id="btn-mute" class="big-btn small">🔊 SOUND: ON</button>
+    <button id="btn-resume" class="big-btn">CONTINUE</button>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
