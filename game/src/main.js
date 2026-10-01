@@ -34,7 +34,7 @@ function pushMsg(from, text) {
 
 function gainCash(n, xPct = 50, yPct = 38) {
   S.cash += n; S.dailyCollected += n;
-  floatText('+' + naira(n), '#2ec4b6', xPct, yPct);
+  floatText('+' + naira(n), '#ffc61a', xPct, yPct);
   sfx.cash();
   updateHUD(); save();
 }
@@ -290,7 +290,7 @@ function resolveRung(rec, arch, rung, idx) {
     S.fear = Math.min(100, S.fear + rung.fear);
     S.respect = Math.min(100, S.respect + 1);
     $('enc-dialogue').textContent = '"Take am! Just no break anything!" — he pays ' + naira(amt) + '.';
-    floatText('PAID ' + naira(amt), '#2ec4b6');
+    floatText('PAID ' + naira(amt), '#ffc61a');
     setTimeout(closeEncounter, 1400);
   } else if (!rung.danger) {
     S.goodwill = Math.max(0, S.goodwill - 3);
@@ -360,7 +360,7 @@ function brawlStrike() {
     b.dhp--;
     b.speed += 0.18;
     world.shake(0.35); sfx.thump();
-    floatText('GBAM! 👊', '#2ec4b6', 50, 40);
+    floatText('GBAM! 👊', '#35c463', 50, 40);
     $('brawl-msg').innerHTML = ['GBAM! Clean hit! 🥊', 'Ouch — he felt that one!', 'The crowd dey cheer! 🎉'][3 - b.dhp] || 'GBAM!';
     if (b.dhp <= 0) { endBrawl(b, true); return; }
   } else {
@@ -615,7 +615,7 @@ function gameOver(title, body, isLoss = true) {
   hide('hud'); hide('encounter');
   setCinebars(false); setSubtitle(null); setTapHint(false);
   $('end-title').textContent = title;
-  $('end-title').style.color = isLoss ? '#e63946' : '#2ec4b6';
+  $('end-title').style.color = isLoss ? '#e63946' : '#35c463';
   $('end-body').innerHTML = body;
   $('btn-again').textContent = isLoss ? 'TRY AGAIN' : 'PLAY AGAIN';
   if (isLoss) sfx.bad(); else sfx.good();

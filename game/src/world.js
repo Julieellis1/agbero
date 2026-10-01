@@ -61,7 +61,7 @@ export class World {
   }
 
   // ---------- people ----------
-  makePerson({ shirt = 0x8a6d4b, skin = 0x6b4a2f, scale = 1, pants = 0x2b2b3a } = {}) {
+  makePerson({ shirt = 0x8a6d4b, skin = 0x6b4a2f, scale = 1, pants = 0x2b2b3a, cap = null } = {}) {
     const grp = new THREE.Group();
     const s = scale;
     const legH = 0.55 * s, torsoH = 0.65 * s;
@@ -85,6 +85,16 @@ export class World {
     const a1 = new THREE.Mesh(armG, armM); a1.position.set(-0.3 * s, legH + torsoH * 0.55, 0); a1.rotation.z = 0.25;
     const a2 = new THREE.Mesh(armG, armM); a2.position.set(0.3 * s, legH + torsoH * 0.55, 0); a2.rotation.z = -0.25;
     for (const m of [l1, l2, torso, head, a1, a2]) { m.castShadow = true; grp.add(m); }
+    if (cap) {
+      // face cap: crown + brim
+      const capM = new THREE.MeshStandardMaterial({ color: cap, roughness: 1 });
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.165 * s, 0.175 * s, 0.11 * s, 10), capM);
+      crown.position.y = head.position.y + 0.12 * s;
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2 * s, 0.035 * s, 0.24 * s), capM);
+      brim.position.set(0, head.position.y + 0.085 * s, 0.22 * s);
+      crown.castShadow = brim.castShadow = true;
+      grp.add(crown, brim);
+    }
     grp.userData = { head, a1, a2, phase: Math.random() * 6, baseY: 0 };
     this.people.push(grp);
     this.scene.add(grp);
@@ -92,7 +102,7 @@ export class World {
   }
 
   // ---------- danfo ----------
-  makeDanfo(stripeColor = GREEN) {
+  makeDanfo(stripeColor = 0x141414) {
     const bus = new THREE.Group();
     const bodyM = new THREE.MeshStandardMaterial({ color: YELLOW, roughness: 0.7 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.5, 4.6), bodyM);
@@ -168,7 +178,7 @@ export class World {
     this.fire.position.set(5, 1.4, 1); this.scene.add(this.fire);
 
     // player lying down
-    this.playerChar = this.makePerson({ shirt: 0x6b5a44, scale: 1 });
+    this.playerChar = this.makePerson({ shirt: 0xf5f5f5, pants: 0x1a7a4a, cap: 0x1a7a4a, scale: 1 });
     this.playerChar.position.set(-1.5, 0, 2);
     this.playerChar.rotation.z = Math.PI / 2 - 0.15; // lying
     this.playerChar.rotation.y = 0.4;
@@ -176,7 +186,7 @@ export class World {
     this.lying = true;
 
     // Oga Sule looming
-    this.ogaChar = this.makePerson({ shirt: 0xa02323, scale: 1.35, pants: 0x1a1a1a });
+    this.ogaChar = this.makePerson({ shirt: 0x161616, scale: 1.35, pants: 0x1a1a1a });
     this.ogaChar.position.set(6, 0, 2.5);
     this.ogaChar.rotation.y = -Math.PI / 2;
 
@@ -254,7 +264,7 @@ export class World {
     const table = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 1.2), stallM);
     table.position.set(10.5, 0.65, -6); table.castShadow = true; this.scene.add(table);
     const umb = new THREE.Mesh(new THREE.ConeGeometry(2.0, 1.0, 10),
-      new THREE.MeshStandardMaterial({ color: 0xe63946, roughness: 0.9 }));
+      new THREE.MeshStandardMaterial({ color: 0x1a7a4a, roughness: 0.9 }));
     umb.position.set(10.5, 2.6, -6); umb.castShadow = true; this.scene.add(umb);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), stallM);
     pole.position.set(10.5, 1.4, -6); this.scene.add(pole);
@@ -270,13 +280,13 @@ export class World {
     }
 
     // people: player, kabiru, mama put
-    this.playerChar = this.makePerson({ shirt: 0x6b5a44, scale: 1 });
+    this.playerChar = this.makePerson({ shirt: 0xf5f5f5, pants: 0x1a7a4a, cap: 0x1a7a4a, scale: 1 });
     this.playerChar.position.set(2.5, 0.2, 1.5);
     this.playerChar.rotation.y = -Math.PI / 2 - 0.4;
-    this.kabiruChar = this.makePerson({ shirt: 0x2b6cb0, scale: 1.02 });
+    this.kabiruChar = this.makePerson({ shirt: 0xf5f5f5, pants: 0x1a1a1a, scale: 1.02 });
     this.kabiruChar.position.set(3.5, 0.2, -2.5);
     this.kabiruChar.rotation.y = Math.PI / 2;
-    this.mamaChar = this.makePerson({ shirt: 0xe63946, scale: 0.95 });
+    this.mamaChar = this.makePerson({ shirt: 0xffc61a, scale: 0.95 });
     this.mamaChar.position.set(10.5, 0.2, -7.4);
     this.mamaChar.rotation.y = Math.PI;
 

@@ -15,3 +15,4 @@ local.properties
 
 # logs
 npm-debug.log*
+.github/
