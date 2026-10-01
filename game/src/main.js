@@ -4,7 +4,7 @@ import { S, resetGame, save, fmt, fmtTime, dayName, addMsg, quotaRemaining, DAYS
 import { World } from './world.js';
 import { ARCHETYPES, pickArchetype, RUNGS, KABIRU_CALLS, DAY_EVENTS } from './content.js';
 import { sfx, unlock, startAmbience, startMusic, setMuted } from './audio.js';
-import { show, hide, updateHUD, floatText, toast, renderPhone, setSubtitle, setTapHint, setCinebars } from './ui.js';
+import { show, hide, updateHUD, floatText, toast, renderPhone, setSubtitle, setTapHint, setCinebars, showInfo } from './ui.js';
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -20,6 +20,7 @@ let spawnTimer = 8;
 let activeBus = null;
 let dayEvent = null;
 let kabiruEventDone = false;
+let hungerWarned = false, hungerDrainT = 0;
 let opening = null; // opening sequence state
 let camPushTarget = 0;
 
@@ -185,6 +186,8 @@ function advanceOpening() {
 function startDay(day) {
   S.day = day; S.screen = 'day';
   S.timeMin = 360; S.dailyCollected = 0; S.encountersToday = 0;
+  S.hunger = 20; S.lastmaDone = false;
+  hungerWarned = false; hungerDrainT = 0;
   kabiruEventDone = false;
   dayEvent = null;
   if (day > 1 && Math.random() < 0.45) {
@@ -205,7 +208,7 @@ function startDay(day) {
 
   if (day === 1) {
     setTimeout(() => pushMsg('Oga Sule', 'Today na Monday. Make ₦5,000 before night. No story.'), 1500);
-    setTimeout(() => toast('🚐 Tap a danfo when it stops to engage the driver!', 3600), 3500);
+    setTimeout(() => toast('🚐 Tap an APPROACHING danfo to wave it down! 💰 loaded · 😰 easy · 🚔 risky.', 4200), 3500);
   }
   $('scene').onclick = onSceneTap;
 }
@@ -217,7 +220,7 @@ function phase() {
 }
 
 function spawnInterval() {
-  let base = phase() === 'midday' ? 17 : 24;
+  let base = phase() === 'midday' ? 10 : 13; // flag-down era: buses come often, player chooses
   if (dayEvent && dayEvent.danfoMult) base /= dayEvent.danfoMult;
   if (S.day === 7) base *= 2.2;
   return base;
@@ -246,6 +249,182 @@ function onSceneTap(e) {
     const sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight;
     if (Math.hypot(e.clientX - sx, e.clientY - sy) < 120) { openEncounter(rec); return; }
   }
+  // wave down an approaching bus in the wave zone
+  const passingMeshes = [];
+  const passing = [];
+  for (const rec of world.buses) {
+    if (rec.state !== 'passing') continue;
+    const z = rec.bus.position.z;
+    if (z < -52 || z > -6) continue;
+    passing.push(rec);
+    rec.bus.traverse(o => { if (o.isMesh) { o.userData.busRec = rec; passingMeshes.push(o); } });
+  }
+  const phits = r.intersectObjects(passingMeshes, false);
+  if (phits.length) { waveBus(phits[0].object.userData.busRec); return; }
+  for (const rec of passing) {
+    const p = rec.bus.position.clone(); p.y += 1.4; p.project(world.camera);
+    if (p.z > 1) continue;
+    const sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight;
+    if (Math.hypot(e.clientX - sx, e.clientY - sy) < 90) { waveBus(rec); return; }
+  }
+  // tap Mama Put -> food menu
+  if (world.mamaChar) {
+    const mMeshes = [];
+    world.mamaChar.traverse(o => { if (o.isMesh) mMeshes.push(o); });
+    const mhits = r.intersectObjects(mMeshes, false);
+    const p = world.mamaChar.position.clone(); p.y += 1.4; p.project(world.camera);
+    const sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight;
+    if (mhits.length || (p.z < 1 && Math.hypot(e.clientX - sx, e.clientY - sy) < 90)) { openFood(); return; }
+  }
+}
+
+// ---------- FLAG-DOWN ----------
+// wave zone: approaching buses the player can pull into the stop
+function waveBus(rec) {
+  if (S.screen !== 'day' || encounterOpen || paused || foodOpen()) return;
+  if (world.buses.some(r => r.state === 'arriving' || r.state === 'halted')) {
+    toast('⏳ Finish with this bus first!', 1800); return;
+  }
+  if (rec.state !== 'passing') return;
+  world.waveDown(rec);
+  removeBadge(rec);
+  sfx.whistle();
+  const t = rec.tell || { id: 'normal', label: '' };
+  if (t.id === 'hot') {
+    addHeat(15);
+    toast('🚔 LASTMA dey trail this bus! +15 heat', 3200);
+  } else if (t.id === 'normal') {
+    toast('📢 You wave am down!', 2200);
+  } else {
+    toast('📢 You wave am down! ' + t.label, 2600);
+  }
+}
+
+// read-the-road badges: one per approaching bus with a tell
+function updateTellBadges() {
+  const layer = $('tell-badges');
+  const seen = new Set();
+  const showBadges = !encounterOpen && !paused;
+  for (const rec of world.buses) {
+    const inZone = rec.state === 'passing' && rec.bus.position.z > -52 && rec.bus.position.z < -6;
+    const emoji = rec.tell && rec.tell.emoji;
+    if (inZone && emoji && showBadges) {
+      seen.add(rec);
+      if (!rec.badgeEl) {
+        const d = document.createElement('div');
+        d.className = 'tell-badge' + (rec.tell.id === 'hot' ? ' hot' : '');
+        d.innerHTML = emoji + '<span class="tell-wave">WAVE!</span>';
+        d.title = rec.tell.label;
+        d.onclick = e => { e.stopPropagation(); waveBus(rec); };
+        layer.appendChild(d);
+        rec.badgeEl = d;
+      }
+      const p = rec.bus.position.clone(); p.y += 2.9; p.project(world.camera);
+      if (p.z < 1) {
+        // clamp to screen edges so the badge stays tappable even near the frame edge
+        const sx = Math.max(34, Math.min(innerWidth - 34, (p.x * 0.5 + 0.5) * innerWidth));
+        rec.badgeEl.style.left = sx + 'px';
+        rec.badgeEl.style.top = ((-p.y * 0.5 + 0.5) * innerHeight) + 'px';
+        rec.badgeEl.style.display = 'block';
+      } else rec.badgeEl.style.display = 'none';
+    }
+  }
+  // cleanup badges for buses that left or were waved
+  for (const rec of [...world.buses]) if (!seen.has(rec) && rec.badgeEl) removeBadge(rec);
+  // also sweep any orphan badge elements
+  for (const d of [...layer.children]) {
+    if (![...world.buses].some(rec => rec.badgeEl === d)) d.remove();
+  }
+}
+
+function removeBadge(rec) {
+  if (rec.badgeEl) { rec.badgeEl.remove(); rec.badgeEl = null; }
+}
+
+// ---------- LASTMA RAID (heat hits 100) ----------
+function lastmaRaid() {
+  S.lastmaDone = true;
+  sfx.siren();
+  toast('🚨 LASTMA RAID! Van dey come!', 3200);
+  world.spawnLastma(vanRec => openLastmaEncounter(vanRec));
+}
+
+function lastmaBtn(label, sub, risk, fn, disabled) {
+  const b = document.createElement('button');
+  b.className = 'rung';
+  b.disabled = !!disabled;
+  b.innerHTML = '<span>' + label + '<br><small style="color:var(--muted)">' + sub + '</small></span>' +
+    '<span class="risk">' + risk + '</span>';
+  b.onclick = fn;
+  return b;
+}
+
+function openLastmaEncounter(rec) {
+  encounterOpen = true;
+  activeBus = rec;
+  camPushTarget = 1;
+  $('enc-emoji').textContent = '👮';
+  $('enc-name').textContent = 'LASTMA Officer';
+  $('enc-trait').textContent = 'Heat 100 — dem come for you';
+  $('enc-dialogue').textContent = '"We get report of tout activity for this bus stop. Oya, explain yourself!"';
+  $('enc-actions').style.display = 'none';
+  const box = $('enc-rungs');
+  box.innerHTML = '';
+
+  const pExplain = Math.min(90, 25 + Math.floor(S.respect / 2) + Math.floor(S.kabiru / 20));
+  box.appendChild(lastmaBtn('🗣️ Explain yourself', 'Talk your way out. Respect helps.', pExplain + '% work', () => {
+    sfx.tap();
+    if (Math.random() * 100 < pExplain) {
+      S.heat = 30;
+      $('enc-dialogue').textContent = '"Hmm. Oya, dey go. But I dey watch you." — Heat drops to 30.';
+      S.goodwill = Math.min(100, S.goodwill + 2);
+      sfx.good();
+    } else {
+      const fine = Math.min(S.cash, 2000);
+      S.cash -= fine; S.heat = 50; S.timeMin += 60;
+      $('enc-dialogue').textContent = '"Story! Enter van." — You pay ' + naira(fine) + ' fine. Heat 50, +1hr lost.';
+      sfx.bad();
+    }
+    box.innerHTML = ''; updateHUD();
+    setTimeout(() => { world.lastmaLeave(); closeEncounter(); $('enc-actions').style.display = ''; }, 1800);
+  }));
+
+  box.appendChild(lastmaBtn('💵 Bribe ₦1,000', 'Officer smiles, problem disappears.', 'Heat → 20', () => {
+      S.cash -= 1000; S.heat = 20;
+      sfx.cash();
+      $('enc-dialogue').textContent = '"No wahala, my oga." — The envelope changes hands. Heat drops to 20.';
+      box.innerHTML = ''; updateHUD();
+      setTimeout(() => { world.lastmaLeave(); closeEncounter(); $('enc-actions').style.display = ''; }, 1800);
+    }, S.cash < 1000));
+
+  box.appendChild(lastmaBtn('🏃 Run!', 'Vanish into the crowd. Risky.', '60% escape', () => {
+    sfx.tap();
+    if (Math.random() < 0.6) {
+      S.health = Math.max(1, S.health - 15); S.heat = 70;
+      $('enc-dialogue').textContent = 'You melt into the crowd! Dem no fit catch you. −15 HP. Heat 70.';
+      sfx.good();
+    } else {
+      const fine = Math.min(S.cash, 2000);
+      S.cash -= fine; S.health = Math.max(1, S.health - 25); S.heat = 60;
+      $('enc-dialogue').textContent = 'Dem catch you for junction! Beating + ' + naira(fine) + ' fine. −25 HP. Heat 60.';
+      sfx.bad(); world.shake(0.4);
+    }
+    box.innerHTML = ''; updateHUD();
+    setTimeout(() => { world.lastmaLeave(); closeEncounter(); $('enc-actions').style.display = ''; }, 1800);
+  }));
+  show('encounter');
+}
+
+// ---------- MAMA PUT FOOD ----------
+function foodOpen() { return !$('food-pop').classList.contains('hidden'); }
+
+function openFood() {
+  if (S.screen !== 'day' || encounterOpen || paused) return;
+  $('food-hunger').textContent = 'Hunger: ' + Math.round(S.hunger) + '/100';
+  $('btn-food-full').style.opacity = S.cash >= 300 ? 1 : 0.4;
+  $('btn-food-snack').style.opacity = S.cash >= 150 ? 1 : 0.4;
+  show('food-pop');
+  sfx.tap();
 }
 
 // ---------- ENCOUNTER ----------
@@ -272,7 +451,7 @@ function renderRungs(rec, arch) {
     if (i < rec.rung) return;
     const b = document.createElement('button');
     b.className = 'rung' + (r.danger ? ' danger' : '');
-    const eff = effectiveSuccess(r, arch);
+    const eff = effectiveSuccess(r, arch, rec);
     b.innerHTML = '<span>' + r.label + '<br><small style="color:var(--muted)">' + r.sub + '</small></span>' +
       '<span class="risk">' + eff + '% pay<br>🔥+' + r.heat + '</span>';
     b.onclick = () => resolveRung(rec, arch, r, i);
@@ -280,8 +459,10 @@ function renderRungs(rec, arch) {
   });
 }
 
-function effectiveSuccess(rung, arch) {
+function effectiveSuccess(rung, arch, rec) {
   let p = rung.success + arch.payBonus + Math.floor(S.fear / 8) + Math.floor((S.goodwill - 50) / 10) + Math.floor(S.respect / 25);
+  if (rec && rec.tell && rec.tell.id === 'nervous') p += 10; // easy mark
+  if (rec && rec.tell && rec.tell.id === 'loaded') p -= 5; // bolder driver
   return Math.max(5, Math.min(99, Math.round(p)));
 }
 
@@ -295,15 +476,16 @@ function closeEncounter() {
 }
 
 function resolveRung(rec, arch, rung, idx) {
-  const p = effectiveSuccess(rung, arch);
+  const p = effectiveSuccess(rung, arch, rec);
   rec.rung = idx + 1;
   addHeat(rung.heat * (arch.heatMult || 1));
   const yMult = (dayEvent && dayEvent.yieldMult) || 1;
+  const tellMult = rec.tell && rec.tell.id === 'loaded' ? 1.5 : 1;
   const [yLo, yHi] = arch.yield;
   const win = Math.random() * 100 < p;
 
   if (win) {
-    const amt = Math.round((yLo + Math.random() * (yHi - yLo)) * yMult / 10) * 10;
+    const amt = Math.round((yLo + Math.random() * (yHi - yLo)) * yMult * tellMult / 10) * 10;
     gainCash(amt);
     S.fear = Math.min(100, S.fear + rung.fear);
     S.respect = Math.min(100, S.respect + 1);
@@ -503,6 +685,9 @@ function kabiruEvent() {
 // ---------- DAY END ----------
 function endDay() {
   S.screen = 'dayend';
+  // clear any tell badges still floating
+  document.getElementById('tell-badges').innerHTML = '';
+  for (const rec of world.buses) rec.badgeEl = null;
   $('scene').onclick = null;
   $('de-day').textContent = S.day;
   const met = S.dailyCollected >= S.dailyTarget;
@@ -534,6 +719,28 @@ $('btn-agbo').onclick = () => {
   S.cash -= 200; S.health = Math.min(100, S.health + 40);
   sfx.good(); toast('🌿 Agbo works its magic. +40 HP.'); endDayRefresh();
 };
+// ---------- mama put food ----------
+$('btn-food-full').onclick = () => {
+  if (S.cash < 300) { toast('You no get ₦300!', 2000); return; }
+  S.cash -= 300; S.hunger = 0; S.health = Math.min(100, S.health + 10);
+  sfx.good(); hide('food-pop'); toast('🍛 Mama Put special! Belle full, +10 HP.', 2600); updateHUD(); save();
+};
+$('btn-food-snack').onclick = () => {
+  if (S.cash < 150) { toast('You no get ₦150!', 2000); return; }
+  S.cash -= 150; S.hunger = Math.max(0, S.hunger - 50);
+  sfx.good(); hide('food-pop'); toast('🥧 Meat pie don hold belle small.', 2400); updateHUD(); save();
+};
+$('btn-food-close').onclick = () => { hide('food-pop'); sfx.tap(); };
+$('tap-mama').onclick = e => { e.stopPropagation(); openFood(); };
+// ---------- clickable HUD icons ----------
+$('chip-cash').onclick = () => { showInfo('cash'); sfx.tap(); };
+document.querySelector('.chip.quota').onclick = () => { showInfo('quota'); sfx.tap(); };
+$('chip-time').onclick = () => { showInfo('time'); sfx.tap(); };
+$('chip-heat').onclick = () => { showInfo('heat'); sfx.tap(); };
+$('chip-hp').onclick = () => { showInfo('hp'); sfx.tap(); };
+$('chip-hunger').onclick = () => { showInfo('hunger'); sfx.tap(); };
+$('btn-info-close').onclick = () => { hide('info-pop'); sfx.tap(); };
+$('info-pop').onclick = e => { if (e.target.id === 'info-pop') hide('info-pop'); };
 $('btn-hospital').onclick = () => {
   if (S.cash < 1000 || S.health >= 100) return;
   S.cash -= 1000; S.health = 100;
@@ -643,9 +850,107 @@ function gameOver(title, body, isLoss = true) {
 $('btn-again').onclick = () => { sfx.tap(); resetGame(); startTitle(); };
 
 // ---------- PHONE / PAUSE ----------
-$('btn-phone').onclick = e => { e.stopPropagation(); renderPhone(); show('phone'); sfx.tap(); };
+$('btn-phone').onclick = e => { e.stopPropagation(); showPhoneTab('msgs'); renderPhone(); show('phone'); sfx.tap(); };
 $('btn-strike').onclick = () => brawlStrike();
 $('btn-phone-close').onclick = () => { hide('phone'); sfx.tap(); };
+$('tab-msgs').onclick = () => { showPhoneTab('msgs'); sfx.tap(); };
+$('tab-call').onclick = () => { showPhoneTab('call'); renderCall(); sfx.tap(); };
+
+// ---------- PHONE: CALL COLLEAGUES ----------
+const CONTACTS = [
+  { name: 'Emeka', stop: 'Oshodi', booming: true, sub: 'Oshodi Under Bridge' },
+  { name: 'Tunde', stop: 'Mile 2', booming: false, sub: 'Mile 2 Bus Stop' },
+  { name: 'Kabiru', stop: 'Your stop', booming: null, sub: 'Your guy — dey here with you' },
+];
+
+function showPhoneTab(which) {
+  const msgs = which === 'msgs';
+  $('tab-msgs').classList.toggle('active', msgs);
+  $('tab-call').classList.toggle('active', !msgs);
+  $('phone-msgs').classList.toggle('hidden', !msgs);
+  $('phone-call').classList.toggle('hidden', msgs);
+  if (!msgs) renderCall();
+}
+
+function renderCall() {
+  const box = $('phone-call');
+  box.innerHTML = '';
+  for (const c of CONTACTS) {
+    const d = document.createElement('div');
+    d.className = 'call-contact';
+    d.innerHTML = '📞 ' + c.name + '<br><span class="sub">' + c.sub + '</span>';
+    d.onclick = () => startCall(c);
+    box.appendChild(d);
+  }
+}
+
+function callLine(box, text, me) {
+  const d = document.createElement('div');
+  d.className = 'call-line' + (me ? ' me' : '');
+  d.textContent = text;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function callOpts(box, opts) {
+  for (const o of opts) {
+    const b = document.createElement('button');
+    b.className = 'call-opt';
+    b.textContent = o.label;
+    b.onclick = o.fn;
+    box.appendChild(b);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function startCall(c) {
+  const box = $('phone-call');
+  box.innerHTML = '';
+  sfx.sms();
+  callLine(box, '📞 Calling ' + c.name + '...', true);
+  setTimeout(() => {
+    if (c.name === 'Kabiru') {
+      callLine(box, '"Kabiru: I dey here with you na! Put phone down, bus dey come." 😅');
+      callOpts(box, [{ label: '↩ End call', fn: renderCall }]);
+      return;
+    }
+    callLine(box, '"' + c.name + ': Hello? Who be this? Ah, my guy! How your side?"');
+    callOpts(box, [
+      {
+        label: '💬 "How your stop dey? E dey boom?"', fn: () => {
+          callLine(box, '"How your stop dey? E dey boom?"', true);
+          sfx.tap();
+          setTimeout(() => {
+            if (c.booming) {
+              callLine(box, '"' + c.name + ': ' + c.stop + ' DEY BOOM today! I don collect ₦8k since morning. Drivers dey fear my name! Tip: danfos with roof racks dey carry extra load — wave dem down, dem dey pay well. 💰"');
+              pushMsg(c.name, c.stop + ' dey boom today — ₦8k since morning! Remember: roof-rack danfos (💰) pay more.');
+            } else {
+              callLine(box, '"' + c.name + ': My guy, ' + c.stop + ' dry like harmattan. Drivers dey dodge me since. Stay where you dey — grass no greener here."');
+              pushMsg(c.name, c.stop + ' dry today. No be every stop dey boom.');
+            }
+            callOpts(box, [{ label: '↩ End call', fn: renderCall }]);
+          }, 900);
+        }
+      },
+      {
+        label: '🔀 "I wan request transfer to your stop"', fn: () => {
+          callLine(box, '"I wan request transfer to your stop. Help me talk to Oga?"', true);
+          sfx.tap();
+          setTimeout(() => {
+            callLine(box, '"' + c.name + ': Ha! You go need Oga Sule approval o. I go put mouth, but no promise. Good luck with that one!"');
+            callOpts(box, [{ label: '↩ End call', fn: renderCall }]);
+            setTimeout(() => {
+              pushMsg('Oga Sule', 'Transfer? You never clear ONE week for Mainland! Clear 4 weeks straight, then we go talk Island. Face your work. 😤');
+              sfx.sms();
+              toast('📩 Oga Sule replied. Check MSGS.', 3000);
+            }, 4000);
+          }, 900);
+        }
+      },
+      { label: '↩ End call', fn: renderCall },
+    ]);
+  }, 900);
+}
 $('btn-pause').onclick = e => { e.stopPropagation(); paused = true; showScreen('pausemenu'); sfx.tap(); };
 $('btn-resume').onclick = () => { paused = false; showScreen(null); show('hud'); sfx.tap(); };
 $('btn-mute').onclick = () => {
@@ -724,9 +1029,10 @@ function loop(now) {
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnTimer = spawnInterval() * (0.7 + Math.random() * 0.6);
-      if (world.buses.length < 3) {
+      const passing = world.buses.filter(r => r.state === 'passing').length;
+      if (passing < 3) {
         world.spawnDanfo(rec => {
-          // bus halted — auto leave after 14s if ignored
+          // bus halted after wave-down — auto leave after 14s if ignored
           setTimeout(() => {
             if (rec.state === 'halted' && !encounterOpen) world.danfoLeave(rec);
           }, 14000);
@@ -734,6 +1040,23 @@ function loop(now) {
         if (Math.random() < 0.6) sfx.engine();
       }
     }
+    // hunger grows through the day; starving drains health
+    S.hunger = Math.min(100, S.hunger + dt * 0.28);
+    if (S.hunger >= 80 && !hungerWarned) {
+      hungerWarned = true;
+      toast('🍲 Hunger dey catch you! Tap Mama Put to chop.', 3600);
+    }
+    if (S.hunger >= 95) {
+      hungerDrainT += dt;
+      if (hungerDrainT >= 5) {
+        hungerDrainT = 0;
+        S.health -= 2;
+        floatText('-2 HP 🍲', '#e63946', 50, 55);
+        if (S.health <= 0) collapse(); else updateHUD();
+      }
+    }
+    // LASTMA comes for you at max heat — once per day
+    if (S.heat >= 100 && !S.lastmaDone && !encounterOpen && !paused) lastmaRaid();
     if (S.timeMin >= 1200) { // 20:00
       for (const rec of [...world.buses]) world.danfoLeave(rec);
       endDay();
@@ -750,6 +1073,19 @@ function loop(now) {
         tapEl.classList.remove('hidden');
       } else tapEl.classList.add('hidden');
     } else tapEl.classList.add('hidden');
+    // read-the-road tell badges over approaching buses in the wave zone
+    updateTellBadges();
+    // Mama Put food marker above her stall (clamped to screen edge, tappable)
+    const mamaEl = $('tap-mama');
+    if (!encounterOpen && !paused && !foodOpen()) {
+      const p = world.mamaChar.position.clone(); p.y += 2.2; p.project(world.camera);
+      if (p.z < 1) {
+        const sx = Math.max(34, Math.min(innerWidth - 34, (p.x * 0.5 + 0.5) * innerWidth));
+        mamaEl.style.left = sx + 'px';
+        mamaEl.style.top = ((-p.y * 0.5 + 0.5) * innerHeight) + 'px';
+        mamaEl.classList.remove('hidden');
+      } else mamaEl.classList.add('hidden');
+    } else mamaEl.classList.add('hidden');
   }
 
   // camera push easing
@@ -792,3 +1128,8 @@ if (params.get('s') === 'opening') {
 }
 
 requestAnimationFrame(loop);
+
+// dev hook for automated testing (?dev=1)
+if (params.get('dev') === '1') {
+  window.__agbero = { S, world, lastmaRaid, openFood, waveBus, sfx };
+}

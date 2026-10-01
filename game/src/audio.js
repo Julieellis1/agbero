@@ -54,6 +54,13 @@ export const sfx = {
   bad() { tone(220, 0.25, 'sawtooth', 0.2, 110); },
   good() { tone(523, 0.1, 'sine', 0.2); setTimeout(() => tone(659, 0.1, 'sine', 0.2), 90); setTimeout(() => tone(784, 0.18, 'sine', 0.2), 180); },
   engine() { tone(70, 0.8, 'sawtooth', 0.08, 120); },
+  whistle() { tone(2400, 0.12, 'sine', 0.16); setTimeout(() => tone(1750, 0.22, 'sine', 0.16), 130); },
+  siren() {
+    for (let i = 0; i < 4; i++) {
+      setTimeout(() => tone(700, 0.28, 'sawtooth', 0.10, 950), i * 560);
+      setTimeout(() => tone(950, 0.28, 'sawtooth', 0.10, 700), i * 560 + 280);
+    }
+  },
 };
 
 export function startAmbience() {

@@ -52,6 +52,7 @@
       <div class="chip" id="chip-time">🌅 6:00</div>
       <div class="chip" id="chip-heat">🔥 0</div>
       <div class="chip" id="chip-hp">❤️ 100</div>
+      <div class="chip" id="chip-hunger">🍲 20</div>
       <button class="chip btn" id="btn-phone">📱</button>
       <button class="chip btn" id="btn-pause">⏸</button>
     </div>
@@ -91,12 +92,42 @@
   <div id="float-layer"></div>
   <!-- Pulsing tap hint over a halted danfo -->
   <div id="tap-bus" class="hidden">👆<span>TAP!</span></div>
+  <!-- Read-the-road tell badges over approaching buses -->
+  <div id="tell-badges"></div>
+  <!-- Mama Put food marker -->
+  <div id="tap-mama" class="hidden">🍲<span>EAT</span></div>
+
+  <!-- Generic info popup (HUD icons) -->
+  <div id="info-pop" class="hidden">
+    <div id="info-card">
+      <div id="info-title">💰 Cash</div>
+      <div id="info-text">...</div>
+      <button id="btn-info-close" class="big-btn small">GOT IT</button>
+    </div>
+  </div>
+
+  <!-- Mama Put food menu -->
+  <div id="food-pop" class="hidden">
+    <div id="food-card">
+      <div id="food-title">🍲 MAMA PUT</div>
+      <div id="food-text">"My pikin, hunger no good for business. Chop something!"</div>
+      <div id="food-hunger">Hunger: 20/100</div>
+      <button id="btn-food-full" class="big-btn small">🍛 MAMA PUT SPECIAL ₦300<br><span class="food-sub">Full belly · +10 HP</span></button>
+      <button id="btn-food-snack" class="big-btn small">🥧 MEAT PIE ₦150<br><span class="food-sub">−50 hunger</span></button>
+      <button id="btn-food-close" class="ghost-btn small">Not now</button>
+    </div>
+  </div>
 
   <!-- Nokia phone -->
   <div id="phone" class="hidden">
     <div id="phone-screen">
       <div id="phone-head">📱 NOKIA · <span id="phone-clock">6:00</span></div>
+      <div id="phone-tabs">
+        <button id="tab-msgs" class="phone-tab active">✉️ MSGS</button>
+        <button id="tab-call" class="phone-tab">📞 CALL</button>
+      </div>
       <div id="phone-msgs"></div>
+      <div id="phone-call" class="hidden"></div>
       <button id="btn-phone-close" class="big-btn small">CLOSE</button>
     </div>
   </div>

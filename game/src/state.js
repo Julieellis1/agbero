@@ -13,6 +13,7 @@ export function newGame() {
     dailyCollected: 0,
     health: 100,
     heat: 0,
+    hunger: 20,           // 0..100 daily hunger
     fear: 10,
     respect: 10,
     goodwill: 50,           // drivers' goodwill
@@ -22,6 +23,7 @@ export function newGame() {
     brawlsWon: 0,
     brawlsLost: 0,
     fridayMissed: false,
+    lastmaDone: false,      // one LASTMA raid per day max
     muted: false,
     msgs: [],               // nokia messages {from, text, time}
     over: false,

@@ -665,7 +665,21 @@ export class World {
     }
     pos.needsUpdate = true;
   }
-  // spawn a danfo driving in; onArrive(bus) when halted at the stop
+  // read-the-road tells: weighted pick shown to the player before waving a bus down
+  static TELLS = [
+    { id: 'normal', emoji: '', w: 45, label: 'Normal bus' },
+    { id: 'nervous', emoji: '😰', w: 20, label: 'Nervous driver — easy mark' },
+    { id: 'loaded', emoji: '💰', w: 20, label: 'Loaded bus — bigger payout, bolder driver' },
+    { id: 'hot', emoji: '🚔', w: 15, label: 'LASTMA dey trail am — risky!' },
+  ];
+  static pickTell() {
+    const total = World.TELLS.reduce((s, t) => s + t.w, 0);
+    let r = Math.random() * total;
+    for (const t of World.TELLS) { r -= t.w; if (r <= 0) return t; }
+    return World.TELLS[0];
+  }
+
+  // spawn a danfo driving past; the player must wave it down (state 'arriving') to stop it
   spawnDanfo(onArrive) {
     const bus = this.makeDanfo();
     bus.position.set(-6, 0, -55);
@@ -674,9 +688,16 @@ export class World {
     conductor.rotation.z = -0.5;
     bus.add(conductor);
     bus.userData.conductor = conductor;
-    const rec = { bus, state: 'arriving', speed: 9, onArrive };
+    const rec = { bus, state: 'passing', speed: 10 + Math.random() * 2.5, onArrive, tell: World.pickTell() };
     this.buses.push(rec);
     return rec;
+  }
+
+  // player waves a passing bus down -> it pulls into the stop
+  waveDown(rec) {
+    if (rec.state !== 'passing') return false;
+    rec.state = 'arriving'; rec.speed = 9;
+    return true;
   }
 
   danfoLeave(rec, dir = 1) {
@@ -695,6 +716,62 @@ export class World {
 
   shake(amt) { this.shakeAmt = Math.max(this.shakeAmt, amt); }
 
+  // LASTMA patrol van that rolls in when heat maxes out
+  makeLastmaVan() {
+    const g = new THREE.Group();
+    const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 });
+    const green = new THREE.MeshStandardMaterial({ color: 0x1a7a4a, roughness: 0.6 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.7, 5.2), white);
+    body.position.y = 1.35; body.castShadow = true; g.add(body);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.24, 0.5, 5.24), green);
+    stripe.position.y = 1.1; g.add(stripe);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 1.6),
+      new THREE.MeshStandardMaterial({ color: 0x20303c, roughness: 0.25, metalness: 0.2 }));
+    cab.position.set(0, 2.2, 1.2); g.add(cab);
+    const tex = this.textTexture('LASTMA', 0x1a7a4a);
+    for (const sx of [1.11, -1.11]) {
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.6),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+      sign.position.set(sx, 1.6, 0); sign.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2; g.add(sign);
+    }
+    // light bar
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.18, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.4 }));
+    bar.position.set(0, 2.75, 1.2); g.add(bar);
+    const lampM = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), lampM);
+    lamp.position.set(-0.35, 2.9, 1.2); g.add(lamp); g.userData.lamp = lamp;
+    const wm = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+    const wg = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 12);
+    g.userData.wheels = [];
+    for (const [x, z] of [[-1, 1.7], [1, 1.7], [-1, -1.7], [1, -1.7]]) {
+      const w = new THREE.Mesh(wg, wm);
+      w.rotation.z = Math.PI / 2; w.position.set(x, 0.42, z); g.add(w);
+      g.userData.wheels.push(w);
+    }
+    // headlights
+    const hl = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
+    for (const x of [-0.7, 0.7]) {
+      const h = new THREE.Mesh(new THREE.CircleGeometry(0.16, 10), hl);
+      h.position.set(x, 1.1, 2.62); g.add(h);
+    }
+    return g;
+  }
+
+  // van drives in and stops near the bus stop; onArrive when halted
+  spawnLastma(onArrive) {
+    const van = this.makeLastmaVan();
+    van.position.set(-6, 0, -55);
+    const rec = { bus: van, state: 'arriving', speed: 11, onArrive, isLastma: true };
+    this.buses.push(rec);
+    this.lastmaRec = rec;
+    return rec;
+  }
+
+  lastmaLeave() {
+    if (this.lastmaRec) { this.danfoLeave(this.lastmaRec, 1); this.lastmaRec = null; }
+  }
+
   update(dt) {
     this.t += dt;
     // idle bob for people
@@ -708,6 +785,10 @@ export class World {
     // buses
     for (const rec of [...this.buses]) {
       const b = rec.bus;
+      // LASTMA lamp flash
+      if (rec.isLastma && b.userData.lamp && rec.state === 'halted') {
+        b.userData.lamp.material.color.setHex(Math.floor(this.t * 6) % 2 ? 0xff2222 : 0x2244ff);
+      }
       if (rec.state === 'arriving') {
         b.position.z += rec.speed * dt;
         rec.speed = Math.max(2.2, rec.speed - dt * 6);
@@ -721,6 +802,10 @@ export class World {
         b.position.z += (rec.dir || 1) * 14 * dt;
         for (const w of b.userData.wheels) w.rotation.x += dt * 20;
         if (Math.abs(b.position.z) > 70) this.removeBus(rec);
+      } else if (rec.state === 'passing') {
+        b.position.z += rec.speed * dt;
+        for (const w of b.userData.wheels) w.rotation.x += dt * rec.speed * 1.6;
+        if (b.position.z > 75) this.removeBus(rec);
       }
     }
     if (this.fire) this.fire.intensity = 10 + Math.sin(this.t * 13) * 3 + Math.random() * 2;
